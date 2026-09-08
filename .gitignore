@@ -1,0 +1,23 @@
+# Data & pipeline outputs — keep specimen images and results out of the repo
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.csv
+*.txt
+!requirements.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
