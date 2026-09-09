@@ -1,33 +1,28 @@
 # Asparagopsis morphometrics pipeline
 
-A semi-automated pipeline for extracting morphometric traits from digitized
-herbarium specimens of *Asparagopsis taxiformis* gametophytes. It combines a
-Fiji/ImageJ macro for manual tracing with two Python scripts for interactive
-threshold approval and trait computation.
+A semi-automated pipeline for extracting morphometric traits from suitable digitized macroalgae herbarium specimens via a 
+Fiji/ImageJ macro, requring manual tracing, and two Python scripts, threshold approval, then automated trait value 
+computation.
 
-The pipeline was built for a global morphological diversity study in the Smith
-Lab at Scripps Institution of Oceanography, but the tools are general to any
-project measuring flattened, branching thallus morphology from photographed
-sheets.
+The pipeline was built to quantify global morphological diversity in Asparagopsis taxiformis gametophytes however, this 
+pipeline is applicable to other taxa.
 
 ## Pipeline overview
 
-Three stages, run in order on a folder of specimen images:
+Run each on a folder of specimen images:
 
-1. **`capture.ijm`** (Fiji/ImageJ) — set the scale from the ruler, then per
-   frond trace the outline, midrib, stipe-width line, and bushy-region
-   boundaries. Saves a color crop (outside the outline blacked out) plus the
-   traced coordinates. No thresholding happens here, so the thallus stays
-   visible while you trace.
+1. **`capture.ijm`** (Fiji/ImageJ) — set scale via attatched ruler for each herbarium record. For up to three fronds per
+   record: Trace frond outline, trace the length of the main axis, measure basal stipe-width, and designate starts and
+   ends of branching regions. This script will save a crop of each frond and the traced coordinates. Cumulativly writes
+   `manifest.csv`, `crop.png`, `midrib.txt`, `stipe.txt`, and `bushy.txt`.
 
-2. **`review.py`** — walks each crop one at a time, showing the color image with
-   the current threshold mask overlaid in red and two sliders (saturation min,
-   brightness min) initialized from an Otsu auto-guess. Drag until only thallus
-   is masked, then Accept (or Skip to flag a frond as unusable). Approved cutoffs
-   are written to `thresholds.csv`.
+3. **`review.py`** — Interactive thresholding for each frond crop, showing the croped frond image with an initail
+   threshold mask estimate overlaid in red and two sliders (saturation min, brightness min). Use sliders to adjust values
+   until only thallus is masked, then Accept (or skip, flaging a frond as unusable). Approved cutoffs are written to
+   `thresholds.csv`.
 
-3. **`measure.py`** — rebuilds each frond's mask from its crop using the approved
-   cutoffs and computes the trait suite in millimetres. Writes `measurements.csv`.
+5. **`measure.py`** — Fully automated portion, uses deisgnated masks from previous part to computes values for the trait
+   suite. Writes `measurements.csv`.
 
 ```
 images/ ──capture.ijm──▶ manifest.csv + *_crop.png + *_midrib.txt
@@ -38,16 +33,9 @@ images/ ──capture.ijm──▶ manifest.csv + *_crop.png + *_midrib.txt
 
 ## Traits measured
 
-Per frond, in millimetres where applicable: projected area, perimeter, midrib
-length, the perpendicular width suite (max / median / mean / min and their
-ratio), bounding-box dimensions, circularity, solidity (area ÷ convex-hull
-area), a perimeter-over-root-area branching index, aspect ratio, stipe width,
-and a manual bushy/stipe partition (bushy length and fraction, segment count,
-width-profile shape descriptors). A `qc_flags` column marks fronds that need a
-second look.
-
-Thresholding is initialized by Otsu's method (Otsu 1979) and refined manually
-per frond in the review step.
+Surface area, perimeter, length, width suite (max / median / mean), circularity, solidity (area ÷ convex-hull
+area), perimeter-over-root-area, aspect ratio, stipe width, and branched fraction (length along axis branched ÷ total
+length) A `qc_flag` marks fronds whose measurements look implausible
 
 ## Requirements
 
