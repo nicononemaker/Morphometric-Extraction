@@ -1,41 +1,31 @@
 # Asparagopsis morphometrics pipeline
 
-A semi-automated pipeline for extracting morphometric traits from suitable digitized macroalgae herbarium specimens via a 
-Fiji/ImageJ macro, requring manual tracing, and two Python scripts, threshold approval, then automated trait value 
-computation.
+A semi-automated pipeline for extracting morphometric traits from suitable digitized macroalgae herbarium specimens via a Fiji/ImageJ macro, requiring manual tracing, and two Python scripts: threshold approval, then automated trait value computation.
 
-The pipeline was built to quantify global morphological diversity in Asparagopsis taxiformis gametophytes however, this 
-pipeline is applicable to other taxa.
+The pipeline was built to quantify global morphological diversity in *Asparagopsis taxiformis* gametophytes; however, it is applicable to other taxa.
 
 ## Pipeline overview
 
 Run each on a folder of specimen images:
 
-1. **`capture.ijm`** (Fiji/ImageJ) — set scale via attatched ruler for each herbarium record. For up to three fronds per
-   record: Trace frond outline, trace the length of the main axis, measure basal stipe-width, and designate starts and
-   ends of branching regions. This script will save a crop of each frond and the traced coordinates. Cumulativly writes
-   `manifest.csv`, `crop.png`, `midrib.txt`, `stipe.txt`, and `bushy.txt`.
+**`capture.ijm`** (Fiji/ImageJ) — set scale via the attached ruler for each herbarium record. For up to three fronds per record: trace the frond outline, trace the length of the main axis, measure basal stipe width, and designate the starts and ends of branched regions. This script saves a crop of each frond and the traced coordinates. Cumulatively writes `manifest.csv`, `*_crop.png`, `*_mainaxis.txt`, `*_stipe.txt`, and `*_branched.txt`.
 
-3. **`review.py`** — Interactive thresholding for each frond crop, showing the croped frond image with an initail
-   threshold mask estimate overlaid in red and two sliders (saturation min, brightness min). Use sliders to adjust values
-   until only thallus is masked, then Accept (or skip, flaging a frond as unusable). Approved cutoffs are written to
-   `thresholds.csv`.
+**`review.py`** — interactive thresholding for each frond crop, showing the cropped frond image with an initial threshold mask estimate overlaid in red and two sliders (saturation min, brightness min). Use the sliders to adjust values until only thallus is masked, then Accept (or Skip, flagging a frond as unusable). Approved cutoffs are written to `thresholds.csv`.
 
-5. **`measure.py`** — Fully automated portion, uses deisgnated masks from previous part to computes values for the trait
-   suite. Writes `measurements.csv`.
+**`measure.py`** — fully automated portion; uses the designated masks from the previous part to compute values for the trait suite. Writes `measurements.csv`.
 
 ```
-images/ ──capture.ijm──▶ manifest.csv + *_crop.png + *_midrib.txt
-                          (+ *_stipe.txt, *_bushy.txt)
+images/ ──capture.ijm──▶ manifest.csv + *_crop.png + *_mainaxis.txt
+                          (+ *_stipe.txt, *_branched.txt)
         ──review.py────▶ thresholds.csv
         ──measure.py───▶ measurements.csv
 ```
 
 ## Traits measured
 
-Surface area, perimeter, length, width suite (max / median / mean), circularity, solidity (area ÷ convex-hull
-area), perimeter-over-root-area, aspect ratio, stipe width, and branched fraction (length along axis branched ÷ total
-length) A `qc_flag` marks fronds whose measurements look implausible
+Surface area, perimeter, main-axis length, width suite (max / median / mean), circularity, solidity (area ÷ convex-hull area), perimeter-over-root-area, aspect ratio, stipe width, stipe-to-max-width ratio, stipe-to-length ratio, and branched fraction (length along the axis that is branched ÷ total length). A `qc_flags` column marks fronds whose measurements look implausible — an outlier max width (holdfast/rhizoid caught by the width march), a max width exceeding frond length, or a mask fragmented into many pieces — as a visual-check flag, never an auto-reject.
+
+Thresholding is initialized by Otsu's method (Otsu 1979) and refined manually per frond in the review step.
 
 ## Requirements
 
@@ -70,17 +60,12 @@ Useful `measure.py` options:
 | `--bridge-tape-mm` | 0 (off) | Morphological close to reconnect branches severed by tape strips |
 | `--overlay` | off | Save a per-frond diagnostic overlay image |
 
-All three scripts support **resume**: re-running on the same folder skips work
-already completed (`capture.ijm` and `review.py` skip finished fronds;
-`measure.py` regenerates from what's present).
+All three scripts support **resume**: re-running on the same folder skips work already completed (`capture.ijm` and `review.py` skip finished fronds; `measure.py` regenerates from what's present).
 
 ## Notes
 
-- The `.gitignore` deliberately excludes specimen images, coordinate files, and
-  result CSVs, so only the code is versioned. Point the scripts at a local data
-  folder outside the repo.
-- `capture.ijm` assumes a 10 mm scale line (`known_mm`) and up to 3 fronds per
-  sheet (`expected_fronds`); both are constants at the top of the macro.
+- The `.gitignore` deliberately excludes specimen images, coordinate files, and result CSVs, so only the code is versioned. Point the scripts at a local data folder outside the repo.
+- `capture.ijm` assumes a 10 mm scale line (`known_mm`) and up to 3 fronds per sheet (`expected_fronds`); both are constants at the top of the macro.
 
 ## License
 

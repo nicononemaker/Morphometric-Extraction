@@ -6,18 +6,18 @@ Reads the capture + review outputs from a folder:
     manifest.csv                      (seq_index, filename, frond, px_per_mm)
     thresholds.csv                    (stem, frond, sat_min, bright_min, status)
     {stem}_frond{n}_crop.png          (color crop; outside-outline is blacked out)
-    {stem}_frond{n}_midrib.txt        (midrib polyline, "x,y" per line)
+    {stem}_frond{n}_mainaxis.txt      (main-axis polyline, "x,y" per line)
     {stem}_frond{n}_stipe.txt         (optional: 2 points across the stipe)
-    {stem}_frond{n}_bushy.txt         (optional: bushy-region start/end points)
+    {stem}_frond{n}_branched.txt      (optional: branched-region start/end points)
 
 For each frond it rebuilds the binary mask from the color crop using the
 saturation/brightness cutoffs that review.py approved (fronds marked "skipped"
 in review are ignored), then computes, in millimetres:
-    area_mm2, perimeter_mm, length_midrib_mm,
-    max/median/mean/min_width_mm (perpendicular-to-midrib, gap-tolerant),
-    width_max_min_ratio, bbox_w_mm, bbox_h_mm,
+    area_mm2, perimeter_mm, length_main_axis_mm,
+    max/median/mean_width_mm (perpendicular-to-main-axis, gap-tolerant),
     circularity, solidity, perim_over_sqrt_area (branching-complexity index),
-    aspect_ratio, stipe_width_mm and the manual bushy-partition traits,
+    aspect_ratio, stipe_width_mm, stipe_to_max_width_ratio,
+    stipe_to_length_ratio and the manual branched-partition traits,
     n_components, qc_flags
 
 Writes: measurements.csv
@@ -61,7 +61,7 @@ def crossing_width(m, px, py, dx, dy, max_reach, max_gap_px, step=1.0):
     return rp + rm, (px + dx*rp, py + dy*rp), (px - dx*rm, py - dy*rm)
 
 def max_perp_width(mask, verts, max_gap_px, samples_per_seg=60):
-    """Max full perpendicular crossing along the midrib polyline. Returns
+    """Max full perpendicular crossing along the main-axis polyline. Returns
     (width_px, best_segment_endpoints, profile_widths, profile_dists) where
     profile_dists is each sample's cumulative arc-distance from the base."""
     best, best_seg, profile, dists = 0.0, None, [], []
@@ -91,7 +91,7 @@ def polyline_length_px(verts):
     return float(np.hypot(d[:,0], d[:,1]).sum())
 
 def measure_frond(mask, verts, px_per_mm, max_gap_px, stipe_w_mm=-1.0,
-                  bushy_pts=None, want_seg=False, keep_all=False):
+                  branched_pts=None, want_seg=False, keep_all=False):
     # By default keep the largest connected component (the frond body). When
     # keep_all=True (tape-bridging already cleaned the mask upstream), use the
     # whole mask so branches severed by tape and reconnected aren't discarded.
@@ -138,31 +138,31 @@ def measure_frond(mask, verts, px_per_mm, max_gap_px, stipe_w_mm=-1.0,
     except Exception:
         pass
 
-    ys, xs = np.nonzero(body)
-    bbox_w_px = float(xs.max() - xs.min() + 1)
-    bbox_h_px = float(ys.max() - ys.min() + 1)
-
     width_px, seg, profile, dists = max_perp_width(body, verts, max_gap_px=max_gap_px)
     length_px = polyline_length_px(verts)
     prof = np.array(profile, dtype=float) if profile else np.array([np.nan])
-    min_w_px = float(np.nanmin(prof))
     mean_w_px = float(np.nanmean(prof))
     median_w_px = float(np.nanmedian(prof))
 
     mm = 1.0 / px_per_mm
+    length_mm = length_px * mm
 
-    # ---------- STIPE WIDTH + PROFILE-SHAPE + MANUAL BUSHY PARTITION ----------
-    bushy_metrics = dict(
+    # ---------- STIPE WIDTH + PROFILE-SHAPE + MANUAL BRANCHED PARTITION ----------
+    branched_metrics = dict(
         stipe_width_mm="NA", stipe_to_max_width_ratio="NA",
-        stipe_length_mm="NA", bushy_length_mm="NA", bushy_fraction="NA",
-        n_bushy_segments="NA", width_shape_factor="NA", peak_position_frac="NA")
+        stipe_to_length_ratio="NA",
+        stipe_length_mm="NA", branched_length_mm="NA", branched_fraction="NA",
+        n_branched_segments="NA", width_shape_factor="NA", peak_position_frac="NA")
 
     # stipe width as its own metric (from the manual stipe line)
     if stipe_w_mm is not None and stipe_w_mm > 0:
-        bushy_metrics["stipe_width_mm"] = round(float(stipe_w_mm), 4)
+        branched_metrics["stipe_width_mm"] = round(float(stipe_w_mm), 4)
         if width_px > 0:
-            bushy_metrics["stipe_to_max_width_ratio"] = round(
+            branched_metrics["stipe_to_max_width_ratio"] = round(
                 float(stipe_w_mm * px_per_mm) / width_px, 4)
+        if length_mm > 0:
+            branched_metrics["stipe_to_length_ratio"] = round(
+                float(stipe_w_mm) / length_mm, 4)
 
     if len(profile) >= 3 and np.isfinite(prof).any():
         d_arr = np.array(dists, dtype=float)
@@ -176,13 +176,13 @@ def measure_frond(mask, verts, px_per_mm, max_gap_px, stipe_w_mm=-1.0,
         # (5) peak position as fraction of length from base
         peak_idx = int(np.nanargmax(w_arr))
         peak_pos = (d_arr[peak_idx] - d_arr[0]) / total_len_px if total_len_px > 0 else np.nan
-        bushy_metrics["width_shape_factor"] = round(float(shape_factor), 4)
-        bushy_metrics["peak_position_frac"] = round(float(peak_pos), 4)
+        branched_metrics["width_shape_factor"] = round(float(shape_factor), 4)
+        branched_metrics["peak_position_frac"] = round(float(peak_pos), 4)
 
-        # ----- MANUAL bushy partition from dropped points -----
-        # bushy_pts: array of (x,y) in crop coords, paired start,end,(start,end..)
-        if bushy_pts is not None and len(bushy_pts) >= 2:
-            # project each boundary point onto the midrib -> arc-distance from base
+        # ----- MANUAL branched partition from dropped points -----
+        # branched_pts: array of (x,y) in crop coords, paired start,end,(start,end..)
+        if branched_pts is not None and len(branched_pts) >= 2:
+            # project each boundary point onto the main axis -> arc-distance from base
             def project_dist(pt):
                 best_d, best_dist = None, np.inf
                 cum = 0.0
@@ -200,29 +200,27 @@ def measure_frond(mask, verts, px_per_mm, max_gap_px, stipe_w_mm=-1.0,
                     cum += np.sqrt(L2)
                 return best_d if best_d is not None else 0.0
 
-            bd = sorted(project_dist(np.asarray(p, float)) for p in bushy_pts)
+            bd = sorted(project_dist(np.asarray(p, float)) for p in branched_pts)
             # pair consecutively: (0,1),(2,3),...; odd trailing start -> to tip
-            bushy_len_px = 0.0
+            branched_len_px = 0.0
             n_seg = 0
             for i in range(0, len(bd), 2):
                 start = bd[i]
                 end = bd[i+1] if i+1 < len(bd) else total_len_px
-                bushy_len_px += max(0.0, end - start)
+                branched_len_px += max(0.0, end - start)
                 n_seg += 1
-            bushy_len_px = min(bushy_len_px, total_len_px)
-            stipe_len_px = max(0.0, total_len_px - bushy_len_px)
-            bushy_metrics.update(
+            branched_len_px = min(branched_len_px, total_len_px)
+            stipe_len_px = max(0.0, total_len_px - branched_len_px)
+            branched_metrics.update(
                 stipe_length_mm=round(stipe_len_px*mm, 4),
-                bushy_length_mm=round(bushy_len_px*mm, 4),
-                bushy_fraction=round(bushy_len_px/total_len_px, 4) if total_len_px>0 else "NA",
-                n_bushy_segments=n_seg,
+                branched_length_mm=round(branched_len_px*mm, 4),
+                branched_fraction=round(branched_len_px/total_len_px, 4) if total_len_px>0 else "NA",
+                n_branched_segments=n_seg,
             )
     # -------------------------------------------------------------------------
     area_mm2 = area_px * mm * mm
     perim_mm = perim_px * mm
     width_mm = width_px * mm
-    length_mm = length_px * mm
-    min_w_mm = min_w_px * mm
     mean_w_mm = mean_w_px * mm
     median_w_mm = median_w_px * mm
 
@@ -245,41 +243,38 @@ def measure_frond(mask, verts, px_per_mm, max_gap_px, stipe_w_mm=-1.0,
     result = {
         "area_mm2": round(area_mm2, 4),
         "perimeter_mm": round(perim_mm, 4),
-        "length_midrib_mm": round(length_mm, 4),
+        "length_main_axis_mm": round(length_mm, 4),
         "max_width_mm": round(width_mm, 4),
         "median_width_mm": round(median_w_mm, 4),
         "mean_width_mm": round(mean_w_mm, 4),
-        "min_width_mm": round(min_w_mm, 4),
-        "width_max_min_ratio": round(width_mm/min_w_mm, 4) if min_w_mm > 0 else "NA",
-        "bbox_w_mm": round(bbox_w_px*mm, 4),
-        "bbox_h_mm": round(bbox_h_px*mm, 4),
         "circularity": round(circ, 4) if np.isfinite(circ) else "NA",
         "solidity": round(solidity, 4) if np.isfinite(solidity) else "NA",
         "perim_over_sqrt_area": round(perim_mm/np.sqrt(area_mm2), 4) if area_mm2 > 0 else "NA",
         "aspect_ratio": round(length_mm/median_w_mm, 4) if median_w_mm > 0 else "NA",
-        "stipe_width_mm": bushy_metrics["stipe_width_mm"],
-        "stipe_to_max_width_ratio": bushy_metrics["stipe_to_max_width_ratio"],
-        "stipe_length_mm": bushy_metrics["stipe_length_mm"],
-        "bushy_length_mm": bushy_metrics["bushy_length_mm"],
-        "bushy_fraction": bushy_metrics["bushy_fraction"],
-        "n_bushy_segments": bushy_metrics["n_bushy_segments"],
-        "width_shape_factor": bushy_metrics["width_shape_factor"],
-        "peak_position_frac": bushy_metrics["peak_position_frac"],
+        "stipe_width_mm": branched_metrics["stipe_width_mm"],
+        "stipe_to_max_width_ratio": branched_metrics["stipe_to_max_width_ratio"],
+        "stipe_to_length_ratio": branched_metrics["stipe_to_length_ratio"],
+        "stipe_length_mm": branched_metrics["stipe_length_mm"],
+        "branched_length_mm": branched_metrics["branched_length_mm"],
+        "branched_fraction": branched_metrics["branched_fraction"],
+        "n_branched_segments": branched_metrics["n_branched_segments"],
+        "width_shape_factor": branched_metrics["width_shape_factor"],
+        "peak_position_frac": branched_metrics["peak_position_frac"],
         "n_components": int(n),
         "qc_flags": qc_flags,
     }
     if want_seg:
-        return result, (body, verts, seg, profile, bushy_pts)
+        return result, (body, verts, seg, profile, branched_pts)
     return result
 
 # ----------------------- driver -----------------------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("folder", help="folder with manifest.csv + masks + midribs")
+    ap.add_argument("folder", help="folder with manifest.csv + crops + main-axis traces")
     ap.add_argument("--max-gap-mm", type=float, default=1.5,
                     help="bridge perpendicular gaps shorter than this (mm)")
     ap.add_argument("--overlay", action="store_true",
-                    help="save a PNG per frond showing mask + midrib + widest crossing")
+                    help="save a PNG per frond showing mask + main axis + widest crossing")
     ap.add_argument("--max-fill-hole-mm2", type=float, default=1.0,
                     help="fill only interior holes SMALLER than this (mm^2) — patches "
                          "threshold speckle while leaving between-branch gaps open so "
@@ -323,18 +318,17 @@ def main():
 
     out_path = os.path.join(args.folder, "measurements.csv")
     cols = ["seq_index","filename","frond","px_per_mm","area_mm2","perimeter_mm",
-            "length_midrib_mm","max_width_mm","median_width_mm","mean_width_mm",
-            "min_width_mm","width_max_min_ratio","bbox_w_mm","bbox_h_mm",
+            "length_main_axis_mm","max_width_mm","median_width_mm","mean_width_mm",
             "circularity","solidity","perim_over_sqrt_area","aspect_ratio",
-            "stipe_width_mm","stipe_to_max_width_ratio",
-            "stipe_length_mm","bushy_length_mm","bushy_fraction","n_bushy_segments",
+            "stipe_width_mm","stipe_to_max_width_ratio","stipe_to_length_ratio",
+            "stipe_length_mm","branched_length_mm","branched_fraction","n_branched_segments",
             "width_shape_factor","peak_position_frac","n_components","qc_flags"]
     with open(out_path, "w") as out:
         out.write(",".join(cols) + "\n")
         for seq, filename, frond, ppm in rows:
             stem = os.path.splitext(filename)[0]
             crop_p = os.path.join(args.folder, f"{stem}_frond{frond}_crop.png")
-            mid_p  = os.path.join(args.folder, f"{stem}_frond{frond}_midrib.txt")
+            mid_p  = os.path.join(args.folder, f"{stem}_frond{frond}_mainaxis.txt")
             key = (stem, frond)
             if not (os.path.exists(crop_p) and os.path.exists(mid_p)):
                 print(f"  MISSING files for {stem} frond {frond} — skipping")
@@ -392,14 +386,14 @@ def main():
                             keepmask |= (clbl == ci)
                     mask = keepmask
             verts = np.loadtxt(mid_p, delimiter=",", ndmin=2)
-            # load manual bushy-boundary points if present
-            bushy_p = os.path.join(args.folder, f"{stem}_frond{frond}_bushy.txt")
-            bushy_pts = None
-            if os.path.exists(bushy_p) and os.path.getsize(bushy_p) > 0:
+            # load manual branched-region boundary points if present
+            branched_p = os.path.join(args.folder, f"{stem}_frond{frond}_branched.txt")
+            branched_pts = None
+            if os.path.exists(branched_p) and os.path.getsize(branched_p) > 0:
                 try:
-                    bushy_pts = np.loadtxt(bushy_p, delimiter=",", ndmin=2)
+                    branched_pts = np.loadtxt(branched_p, delimiter=",", ndmin=2)
                 except Exception:
-                    bushy_pts = None
+                    branched_pts = None
             # load stipe line endpoints if present (for overlay + width)
             stipe_p = os.path.join(args.folder, f"{stem}_frond{frond}_stipe.txt")
             stipe_line = None
@@ -420,12 +414,12 @@ def main():
             keep_all = args.bridge_tape_mm > 0
             if args.overlay:
                 res = measure_frond(mask, verts, ppm, max_gap_px,
-                                    stipe_w_mm=stipe_w, bushy_pts=bushy_pts, want_seg=True,
+                                    stipe_w_mm=stipe_w, branched_pts=branched_pts, want_seg=True,
                                     keep_all=keep_all)
                 m, segdata = res if res else (None, None)
             else:
                 m = measure_frond(mask, verts, ppm, max_gap_px,
-                                  stipe_w_mm=stipe_w, bushy_pts=bushy_pts,
+                                  stipe_w_mm=stipe_w, branched_pts=branched_pts,
                                   keep_all=keep_all)
             if m is None:
                 print(f"  EMPTY mask for {stem} frond {frond} — skipping")
@@ -442,9 +436,9 @@ def main():
                     reported_px = m["max_width_mm"] * ppm
                     if reported_px < 0.95 * peak_px:
                         flag = "  <-- WARNING: reported max_width below profile peak (reporting bug)"
-                # also flag a near-flat profile (midrib may not cross the blade)
+                # also flag a near-flat profile (main axis may not cross the blade)
                 if m["width_max_min_ratio"] != "NA" and float(m["width_max_min_ratio"]) < 1.2:
-                    flag += "  <-- NOTE: width nearly constant; check midrib crosses the bushy part"
+                    flag += "  <-- NOTE: width nearly constant; check main axis crosses the branched part"
             except Exception:
                 pass
 
@@ -466,7 +460,7 @@ def main():
                 ax[0].imshow(area_layer)
                 ax[0].plot([], [], "s", color=(0.1,0.8,0.9), alpha=0.6,
                            label=f"measured area {m['area_mm2']}mm²")
-                ax[0].plot(vv[:,0], vv[:,1], "c-o", ms=3, lw=1, label="midrib")
+                ax[0].plot(vv[:,0], vv[:,1], "c-o", ms=3, lw=1, label="main axis")
                 ax[0].plot([axp,bx],[ayp,by], "r-", lw=3, label=f"max width {m['max_width_mm']}mm")
                 ax[0].plot(cx,cy,"y*",ms=14)
                 if bpts is not None and len(bpts) >= 1:
@@ -475,13 +469,13 @@ def main():
                         is_start = (idx % 2 == 0)
                         ax[0].plot(bp[idx,0], bp[idx,1], "o", ms=11,
                                    mfc=("lime" if is_start else "orange"), mec="black",
-                                   label=("bushy start" if (is_start and idx==0) else
-                                          ("bushy end" if (not is_start and idx==1) else None)))
+                                   label=("branched start" if (is_start and idx==0) else
+                                          ("branched end" if (not is_start and idx==1) else None)))
                 # stipe line on the full view (blue)
                 if stipe_line is not None:
                     ax[0].plot(stipe_line[:,0], stipe_line[:,1], "b-", lw=2.5, label="stipe width")
                 ax[0].legend(fontsize=8); ax[0].set_title(
-                    f"{stem} frond {frond}  (bushy frac={m['bushy_fraction']})"
+                    f"{stem} frond {frond}  (branched frac={m['branched_fraction']})"
                     + (f"\nFLAGGED: {m['qc_flags']}" if m['qc_flags'] else ""),
                     color=("red" if m['qc_flags'] else "black")); ax[0].axis("off")
                 # ---- panel 1: width profile ----
@@ -508,9 +502,9 @@ def main():
                 plt.tight_layout(); plt.savefig(ovp, dpi=80, bbox_inches="tight"); plt.close()
 
             print(f"  [{seq}] {stem} frond {frond}: "
-                  f"area={m['area_mm2']} len={m['length_midrib_mm']} "
+                  f"area={m['area_mm2']} len={m['length_main_axis_mm']} "
                   f"maxW={m['max_width_mm']} medW={m['median_width_mm']} "
-                  f"minW={m['min_width_mm']} (n_comp={m['n_components']}){flag}")
+                  f"(n_comp={m['n_components']}){flag}")
     print("Wrote", out_path)
 
 if __name__ == "__main__":

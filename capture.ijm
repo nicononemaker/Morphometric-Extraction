@@ -8,13 +8,13 @@
 //   {stem}_frond{n}_crop.png  : color crop of the frond's bounding box, with
 //                               everything OUTSIDE your freehand outline set to
 //                               pure black. Python thresholds the non-black part.
-//   {stem}_frond{n}_midrib.txt: midrib polyline in CROP-relative coords.
+//   {stem}_frond{n}_mainaxis.txt: main-axis polyline in CROP-relative coords.
 // Manifest: seq_index, filename, frond, px_per_mm
 //
 // WORKFLOW per image:
 //   1. SET SCALE: draw a line over a known distance on the ruler -> OK
 //   2. Per frond: (a) freehand around the frond -> OK
-//                 (b) segmented midrib line, full blade, double-click -> OK
+//                 (b) segmented main-axis line, full blade, double-click -> OK
 // ============================================================
 
 known_mm = 10;
@@ -112,18 +112,18 @@ for (i = 0; i < list.length; i++) {
         roiManager("reset");
         roiManager("add");                 // outline now safe in slot 0
 
-        // (b) midrib polyline (outline is stored; drawing this won't lose it)
+        // (b) main-axis polyline (outline is stored; drawing this won't lose it)
         selectWindow(original);
         setTool("polyline");
-        waitForUser("FROND " + frond + " - MIDRIB",
-            "Draw a segmented line down frond " + frond + "'s midrib,\nthrough the full blade. Double-click to finish.\nThen click OK.");
+        waitForUser("FROND " + frond + " - MAIN AXIS",
+            "Draw a segmented line down frond " + frond + "'s main axis,\nthrough the full blade. Double-click to finish.\nThen click OK.");
         getSelectionCoordinates(xs, ys);
-        coord_path = output_dir + stem + "_frond" + frond + "_midrib.txt";
-        midrib_text = "";
-        for (k = 0; k < xs.length; k++) midrib_text = midrib_text + (xs[k]-bx) + "," + (ys[k]-by) + "\n";
-        File.saveString(midrib_text, coord_path);
+        coord_path = output_dir + stem + "_frond" + frond + "_mainaxis.txt";
+        mainaxis_text = "";
+        for (k = 0; k < xs.length; k++) mainaxis_text = mainaxis_text + (xs[k]-bx) + "," + (ys[k]-by) + "\n";
+        File.saveString(mainaxis_text, coord_path);
 
-        // (b2) stipe-width line. Written EXACTLY like the bushy block (which
+        // (b2) stipe-width line. Written EXACTLY like the branched block (which
         //      works): loop the selection coords directly, no intermediate
         //      variables, no arithmetic. Width is computed later in measure.py
         //      from these two saved points. Click 2 points across the stipe,
@@ -148,51 +148,51 @@ for (i = 0; i < list.length; i++) {
         stipe_path = output_dir + stem + "_frond" + frond + "_stipe.txt";
         File.saveString(stipe_text, stipe_path);
 
-        // (b3) bushy-boundary points, captured as START/END pairs.
+        // (b3) branched-region boundary points, captured as START/END pairs.
         //      Each click is its own prompt (robust: a single point selection
-        //      can't be lost). After each pair, asks if there's another bushy
-        //      region (handles bushy-stipe-bushy). Skip rhizoid/holdfast by not
+        //      can't be lost). After each pair, asks if there's another branched
+        //      region (handles branched-stipe-branched). Skip rhizoid/holdfast by not
         //      marking it. Saved in CROP-relative coords; measure.py projects
-        //      them onto the midrib.
-        bushy_text = "";
-        more_bushy = true;
+        //      them onto the main axis.
+        branched_text = "";
+        more_branched = true;
         region = 0;
-        while (more_bushy) {
+        while (more_branched) {
             region++;
             // START point
             selectWindow(original);
             run("Select None");
             setTool("point");
-            waitForUser("FROND " + frond + " - BUSHY REGION " + region + " START",
-                "Click the START of bushy region " + region + "\n(where branching begins). Then click OK.");
+            waitForUser("FROND " + frond + " - BRANCHED REGION " + region + " START",
+                "Click the START of branched region " + region + "\n(where branching begins). Then click OK.");
             if (selectionType() != 10) {
-                print("  frond " + frond + ": no start point for region " + region + " - stopping bushy capture.");
-                more_bushy = false;
+                print("  frond " + frond + ": no start point for region " + region + " - stopping branched capture.");
+                more_branched = false;
             } else {
                 getSelectionCoordinates(sxs, sys);
-                bushy_text = bushy_text + (sxs[0]-bx) + "," + (sys[0]-by) + "\n";
+                branched_text = branched_text + (sxs[0]-bx) + "," + (sys[0]-by) + "\n";
 
                 // END point
                 selectWindow(original);
                 run("Select None");
                 setTool("point");
-                waitForUser("FROND " + frond + " - BUSHY REGION " + region + " END",
-                    "Click the END of bushy region " + region + "\n(where branching stops). Then click OK.");
+                waitForUser("FROND " + frond + " - BRANCHED REGION " + region + " END",
+                    "Click the END of branched region " + region + "\n(where branching stops). Then click OK.");
                 if (selectionType() != 10) {
                     print("  frond " + frond + ": no end point for region " + region + " - dropping this region.");
                     // remove the orphan start we just added
-                    bushy_text = "";  // safest: discard partial; user can redo frond
-                    more_bushy = false;
+                    branched_text = "";  // safest: discard partial; user can redo frond
+                    more_branched = false;
                 } else {
                     getSelectionCoordinates(exs, eys);
-                    bushy_text = bushy_text + (exs[0]-bx) + "," + (eys[0]-by) + "\n";
+                    branched_text = branched_text + (exs[0]-bx) + "," + (eys[0]-by) + "\n";
                     // ask about another region
-                    more_bushy = getBoolean("Another separate bushy region on this frond?\n\nYes = mark another start/end pair\nNo = done with bushy regions");
+                    more_branched = getBoolean("Another separate branched region on this frond?\n\nYes = mark another start/end pair\nNo = done with branched regions");
                 }
             }
         }
-        bushy_path = output_dir + stem + "_frond" + frond + "_bushy.txt";
-        File.saveString(bushy_text, bushy_path);
+        branched_path = output_dir + stem + "_frond" + frond + "_branched.txt";
+        File.saveString(branched_text, branched_path);
 
         // (c) build the color crop with outside-of-outline blacked out:
         //     duplicate whole image, recall outline, clear outside, crop to bbox.
@@ -210,7 +210,7 @@ for (i = 0; i < list.length; i++) {
 
         File.append(seq + "," + filename + "," + frond + "," + px_per_mm, manifest);
         fronds_done++;
-        print("  frond " + frond + ": crop + " + xs.length + "-pt midrib + stipe + bushy saved");
+        print("  frond " + frond + ": crop + " + xs.length + "-pt main axis + stipe + branched saved");
     }
 
     close(original);
