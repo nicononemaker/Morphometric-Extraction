@@ -81,7 +81,7 @@ Nine predictors are extracted and assigned to specimens in `01_build_dataset.R`.
 |`salinity_clim`|salinity|CMEMS Global Ocean Physics Reanalysis (GLORYS12V1)|1993–2016 (precomputed)|
 |`spco2_clim`|surface ocean pCO₂|CMEMS observation-based carbon (Chau et al. 2024)|1993–2024 (self-computed)|
 |`wave.height`|significant wave height|CMEMS Global Ocean Waves Reanalysis (WAVERYS)|1993–2020 (precomputed)|
-|`kd490_clim`|turbidity (Kd490)|Copernicus-GlobColour (OCEANCOLOUR\_GLO\_BGC\_L4\_MY\_009\_104)|1997–2023 (precomputed)|
+|`kd490_clim`|turbidity (Kd490)|Copernicus-GlobColour (OCEANCOLOUR\_GLO\_BGC\_L4\_MY\_009\_104)|1997–2023 (self-computed)|
 |`PAR_mean`|photosynthetically available radiation|MODIS-Aqua L3 (NASA OBPG)|2002–2025 (precomputed)|
 |`phosphate_clim`|phosphate|CMEMS Global Ocean Biogeochemistry Hindcast|1993–2025 (self-computed)|
 |`nitrate_clim`|nitrate|CMEMS Global Ocean Biogeochemistry Hindcast|1993–2025 (self-computed)|
@@ -124,7 +124,7 @@ Derived climatologies are redistributed under the source providers' open-data te
 |iron, nitrate, phosphate|CMEMS Ocean Biogeochemistry Hindcast (BIO 001_029)|`fe`, `no3`, `po4`|1993–2025|self-computed|Copernicus Marine|
 |pCO₂|CMEMS observation-based carbon (Chau et al. 2024)|`spco2`|1993–2024|self-computed|Copernicus Marine|
 |SST|HadISST v1.1|`sst`|1993–2025|self-computed|[Met Office Hadley Centre](https://www.metoffice.gov.uk/hadobs/hadisst/)|
-|turbidity (Kd490)|Copernicus-GlobColour Ocean Colour (009\_104)|`KD490`|1997–2024|self-computed (monthly → annual → mean)|Copernicus Marine|
+|turbidity (Kd490)|Copernicus-GlobColour Ocean Colour (009\_104)|`KD490`|1997–2024|self-computed|Copernicus Marine|
 |salinity|CMEMS Ocean Physics Reanalysis (PHY 001_030)|`so`|native|precomputed|Copernicus Marine|
 |wave height|CMEMS Ocean Waves Reanalysis (WAV 001_032)|`VHM0`|native|precomputed|Copernicus Marine|
 |PAR|MODIS-Aqua L3|`par`|native|precomputed|[NASA OBPG](https://oceancolor.gsfc.nasa.gov/)|
