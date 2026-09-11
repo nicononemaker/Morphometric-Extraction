@@ -99,7 +99,7 @@ Specimen images, coordinate files, and result CSVs are git-ignored, so the repo 
 
 **Compressed single-layer climatologyy (from deposited data; faster run through).** A Zenodo deposit provides the derived data needed to reproduce the analysis without the multi-GB raw environmental downloads and the time intensive compression of this data to a one layer climatolgy:
 
-> [\*\*\[(https://doi.org/10.5281/zenodo.22715237)]\*\*](https://doi.org/10.5281/zenodo.22715237)
+> (https://doi.org/10.5281/zenodo.22715237)
 
 
 
